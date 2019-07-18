@@ -3,10 +3,14 @@
 # GPAM = (Sum of Median Grades of Classes Taken, Weighted by Units)/Sum of Total Units Taken
 # cumulative (entire academic history) and per term (quarters) and per year (or they can select)
 
+# TODO: unit test
+# TODO: put binary in separate function and clean up/optimize code
+
 import csv
 import statistics
 import pandas as pd
 import unittest
+import sys
 
 class GPAM:
 
@@ -33,9 +37,13 @@ class GPAM:
 		course_data = 'FILENAME_COURSES.csv'
 		course_rows = self.retrieve_rows()
 		admittance_rows = self.retrieve_admittance_rows()
-		course_rows.pop(0)	# Don't need the headers for the sort so remove them
-		course_rows = sorted(course_rows, key = lambda x: x[0])	# Sorts the list in ascending order
+		admittance_rows.pop(0)
+		course_rows.pop(0)	#don't need the headers for the sort so remove them
+		admittance_rows = sorted(admittance_rows, key = lambda x: x[0])
+		course_rows = sorted(course_rows, key = lambda x: x[0])	#sorts the list in ascending order
 		subject_rows = sorted(course_rows, key = lambda x: x[2])
+
+		print("Initialization completed. Press control+c to exit program and save progress.")
 
 	"""
 	Calculates the GPAM of a student.
@@ -55,18 +63,25 @@ class GPAM:
 			rows = self.retrieve_rows(pidm)
 		num_units = 0
 		courses_completed = []
-		num_units = self.calc_units_taken(rows, pidm) # Number of units taken in academic history
-		courses_completed = self.get_courses_completed(rows, pidm) # Courses completed in academic history
-		
+
+		if term != None:
+			for row in rows:
+				if row[1] == term:
+					num_units += float(row[5])
+				if row[1] == term and row[7] is not '':	# Omit courses with no grade
+					courses_completed.append(row)
+		else:
+			for row in rows:
+				num_units += float(row[5])
+				if row[7] is not '': # Omit courses with no grade
+					courses_completed.append(row)
+
+
+
 		sum_of_medians = self.get_sum_of_medians(courses_completed) # Add all of the medians together
 		
 		gpam = sum_of_medians/num_units # GPAM formula
 		gpam = round(gpam, 2) # Round the GPAM to two decimal places
-
-		if term != None:
-			self.update_gpam(pidm, gpam, term)
-		else:
-			self.update_gpam(pidm, gpam)
 
 		return gpam
 
@@ -76,11 +91,31 @@ class GPAM:
 	def verify_admittance(self, pidm):
 		global admittance_rows
 		found_pidm = False
+		
+		"""
 		for row in admittance_rows:
 			if row[0] == pidm:
 				found_pidm = True
 				index = admittance_rows.index(row)
-				print("Found at " + str(index))
+				print("Found at " + str(index)) # Linear
+		"""
+
+		left_index = 0
+		right_index = len(admittance_rows) - 1
+		mid_index = 0
+
+		while left_index <= right_index:
+			mid_index = (left_index + right_index) // 2
+
+			if admittance_rows[mid_index][0] == pidm:
+				found_pidm = True
+				#index = admittance_rows.index(row)
+				print("Found at " + str(mid_index)) # Binary
+				break
+			elif admittance_rows[mid_index][0] < pidm:
+				left_index = mid_index + 1
+			else:
+				right_index = mid_index - 1
 
 		return found_pidm
 
@@ -90,7 +125,6 @@ class GPAM:
 	Returns median as a grade point.
 	"""
 	def calc_median(self, term, subj, crse, class_id):
-		#rows = self.retrieve_rows()
 		global course_rows
 		global subject_rows
 		median = 0
@@ -107,6 +141,7 @@ class GPAM:
 			mid_index = (left_index + right_index) // 2
 
 			if subject_rows[mid_index][2] == subj:
+				#print("Found midpoint at " + str(mid_index))
 				if subject_rows[mid_index][7] is not "" and subject_rows[mid_index][7] != "\"\"" and subject_rows[mid_index][1].lower() == term.lower() and \
 				subject_rows[mid_index][3].lower() == crse.lower() and subject_rows[mid_index][4].lower() == class_id.lower():
 					term_grades_for_course.append(float(subject_rows[mid_index][7]))
@@ -139,7 +174,7 @@ class GPAM:
 				break
 		
 		if not term_grades_for_course: 
-			print("No grades. P/NP course: " + term + " " + subj + " " + crse + " " + class_id)
+			#print("No grades. P/NP course: " + term + " " + subj + " " + crse + " " + class_id)
 			return 0
 		else:
 			median = statistics.median(term_grades_for_course)
@@ -152,17 +187,14 @@ class GPAM:
 	Returns the number of total units the student has taken as an int.
 	"""
 	def calc_units_taken(self, courses, pidm, term=None):
-
 		num_units = 0
 
-		#If the course is P/NP, then the units should still be considered.
+		# If the course is P/NP, then the units should still be considered.
 		if term != None:
-			#for row in rows:
 			for row in courses:
 				if row[1] == term:
 					num_units += float(row[5])
 		else:
-			
 			for row in courses:
 				num_units += float(row[5])
 		return num_units
@@ -173,16 +205,13 @@ class GPAM:
 	Returns the courses as a list.
 	"""
 	def get_courses_completed(self, courses, pidm, term=None):
-		#rows =retrieve_rows(pidm)
 		courses_completed = []
 
 		if term != None:
-
 			for row in courses:
 				if row[1] == term and row[7] is not '':	# Omit courses with no grade
 					courses_completed.append(row)
 		else: 
-			
 			for row in courses:
 				if row[7] is not '': # Omit courses with no grade
 					courses_completed.append(row)
@@ -249,7 +278,7 @@ class GPAM:
 					break
 		else:
 			with open(course_data, 'r') as csvFile:	
-				csv_reader = csv.reader(csvFile, delimiter=',', quotechar="'", quoting=csv.QUOTE_MINIMAL) # separated by commas and remove extra quotes
+				csv_reader = csv.reader(csvFile, delimiter=',', quotechar="'", quoting=csv.QUOTE_MINIMAL) #separated by commas and remove extra quotes
 				
 				for row in csv_reader:	
 					rows.append(row)
@@ -263,6 +292,7 @@ class GPAM:
 		rows = []
 		global course_rows
 		if pidm != None and course_rows:
+			print("Binary")
 
 			left_index = 0
 			right_index = len(course_rows) - 1
@@ -305,8 +335,8 @@ class GPAM:
 	def retrieve_admittance_rows(self):
 		rows = []
 
-		# Load the csv data that contains student acadamic data into the program
-		# Rows is a list of each row in the csv file
+		#Load the csv data that contains student acadamic data into the program
+		#rows is a list of each row in the csv file
 		with open(admittance_data, 'r') as csvFile:	
 			csv_reader = csv.reader(csvFile, delimiter=',', quotechar="'", quoting=csv.QUOTE_MINIMAL)
 			for row in csv_reader:
@@ -319,26 +349,28 @@ class GPAM:
 	GPAM or the TERM_GPAM. Uses pandas module to search and insert values into the csv.
 	Parameters are strings for pidm, gpam, and the term.
 	"""
-	def update_gpam(self, pidm, gpam, term=None):
-		df = pd.read_csv(course_data)
-		#df.coulmns = ["PIDM", "TERM", "SUBJ", "CRSE", "CLASS_ID", "UNITS", "GRADE", "GRADE_PT", "GPAM", "TERM_GPAM"]
-		df["UNITS"] = df["UNITS"].astype(int)
+	def update_gpam(self, pidm, df, gpam, term=None):
+		print("Updating: PIDM-" + pidm + " GPAM-" + gpam)
 		if term != None:
+			# Get the locations/indexes of each row that contains the PIDM and TERM
 			row_locs = df.loc[(df["PIDM"].astype(str) == pidm) & (df["TERM"].astype(str) == term)].index.values #Requires & operator instead of and to make comparison
-			for index in row_locs:
+			for index in row_locs:	#Update the column for each of the rows 
 				df.loc[index, "TERM_GPAM"] = gpam
 		else:
-			row_locs = df.loc[df["PIDM"].astype(str) == pidm].index.values	#Type from dataframe would not compare unless changed to str
-			for index in row_locs:
-				df.loc[index, "GPAM"] = gpam
-		df.to_csv(course_data, index=False, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
-
-	
+			df.loc[df.PIDM.isin([pidm]), "GPAM"] = gpam
+		
 	def main(self):
 		global course_rows
+
+		# dict to add to dataframe
+		gpam_dict = {'PIDM' : [], 'GPAM': []}
+		counter = 0
+		df = pd.read_csv(course_data)
+		df["UNITS"] = df["UNITS"].astype(int)	# Prevents the UNITS column from being changed to floats after updating csv
 		previous = 0
 		for row in course_rows:
-			#print(row[0])	# Print current pidm
+			pidm = row[0]
+			counter += 1
 
 			try:
 				if row[8] != "\"\"":	# Skip rows that already have GPAM updated
@@ -346,30 +378,50 @@ class GPAM:
 					continue
 			except IndexError:	# GPAM column not created yet
 				try: 
-					found_pidm = self.verify_admittance(row[0])
+					found_pidm = self.verify_admittance(pidm)
 					assert(found_pidm is True), "The pidm could not be found."
-					#print("GPAM is " + str(self.gpam(row[0])))
+					print("calculating GPAM...")
+					gpam = str(self.gpam(pidm))
+					print("GPAM is " + gpam + " " + str(pidm) + " Row: " + str(counter-1))
+					self.update_gpam(pidm, df, gpam)
 					continue
 				except AssertionError:
 					continue
 
 			# Check if the current pidm is the same as the last one
-			if previous == row[0]:
+			if previous == pidm:
 				#print(previous + " == " + row[0])
 				continue
 			else:
-				previous = row[0]
+				previous = pidm
 			
 			try :
 				# Verify student was admitted after 2008 before calculating GPAM
-				found_pidm = self.verify_admittance(row[0])
+				found_pidm = self.verify_admittance(pidm)
 				assert(found_pidm is True), "The pidm could not be found."
-				#print("GPAM is " + str(self.gpam(row[0])))
+				print("calculating GPAM...")
+				#gpam = str(self.gpam(pidm))
+				gpam = str(self.gpam(pidm))
+				print("GPAM is " + gpam + " " + str(pidm) + " Row: " + str(counter-1))
+				
+				#gpam_dict['PIDM'].append(row[0])
+				#gpam_dict['GPAM'].append(gpam)
+				#print(gpam_dict)
+
+				self.update_gpam(pidm, df, gpam)
+				#print("TERM_GPAM is " + str(self.gpam(row[0], row[1])))
 			except AssertionError:
 				continue
 			except ZeroDivisionError:
 				print("Zero units being divided.")
 				continue
+			except KeyboardInterrupt:
+				df.to_csv(course_data, index=False, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
+				sys.exit(0)
+
+		# At this point, the dataframe should have all of the GPAMs. Write to the CSV.
+		df.to_csv(course_data, index=False, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
+		print("Finished")
 
 if __name__ == "__main__":
     gpam_obj = GPAM()
